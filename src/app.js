@@ -19,7 +19,7 @@ mongoClient
     db = mongoClient.db("batepapo-uol");
   })
   .catch((err) => {
-    console.log(`Error ${err} while trying to connect to database`);
+    console.error(`Error ${err} while trying to connect to database`);
   });
 
 app.get("/participants", async (req, res) => {
@@ -27,7 +27,7 @@ app.get("/participants", async (req, res) => {
     const data = await db.collection("participants").find().toArray();
     return res.send(data);
   } catch (error) {
-    console.log(error);
+    console.error(error);
     return res.sendStatus(500);
   }
 });
@@ -50,23 +50,70 @@ app.post("/participants", async (req, res) => {
       });
     }
 
-    await db
-      .collection("participants")
-      .insertOne({ name, lastStatus: Date.now() });
+    await db.collection("participants").insertOne({
+      name,
+      lastStatus: Date.now(),
+    });
 
-    const newParticipantMessage = {
+    await db.collection("messages").insertOne({
       from: name,
       to: "Todos",
       text: "entra na sala...",
       type: "status",
       time: dayjs().format("hh:mm:ss"),
-    };
-
-    await db.collection("messages").insertOne(newParticipantMessage);
+    });
 
     return res.sendStatus(201);
   } catch (error) {
-    console.log(error);
+    console.error(error);
+    return res.sendStatus(500);
+  }
+});
+
+app.post("/messages", async (req, res) => {
+  const { to, text, type } = req.body;
+  const from = req.headers.user;
+
+  try {
+    if (!to || !text || !type || !from) {
+      return res.status(422).send({ message: "Please fill all fields." });
+    }
+
+    if (type !== "message" && type !== "private_message") {
+      return res.status(422).send({ message: "Message type is invalid." });
+    }
+
+    console.log(from);
+
+    const checkFrom = await db
+      .collection("participants")
+      .findOne({ name: from });
+
+    console.log(checkFrom);
+
+    if (!checkFrom) {
+      return res.status(422).send({
+        message: "Participant doesn't exist!",
+      });
+    }
+
+    await db
+      .collection("messages")
+      .insertOne({ to, text, type, from, time: dayjs().format("hh:mm:ss") });
+
+    return res.sendStatus(201);
+  } catch (error) {
+    console.error(error);
+    return res.sendStatus(500);
+  }
+});
+
+app.get("/messages", async (req, res) => {
+  try {
+    const data = await db.collection("messages").find().toArray();
+    return res.send(data);
+  } catch (error) {
+    console.error(error);
     return res.sendStatus(500);
   }
 });
