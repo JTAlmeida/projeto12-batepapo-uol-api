@@ -83,13 +83,9 @@ app.post("/messages", async (req, res) => {
       return res.status(422).send({ message: "Message type is invalid." });
     }
 
-    console.log(from);
-
     const checkFrom = await db
       .collection("participants")
       .findOne({ name: from });
-
-    console.log(checkFrom);
 
     if (!checkFrom) {
       return res.status(422).send({
@@ -109,9 +105,26 @@ app.post("/messages", async (req, res) => {
 });
 
 app.get("/messages", async (req, res) => {
+  const displayLimit = parseInt(req.query.limit);
+  const { user } = req.headers;
+
   try {
     const data = await db.collection("messages").find().toArray();
-    return res.send(data);
+
+    const displayFilter = data.filter((message) => {
+      return (
+        message.to === "Todos" ||
+        message.to === user ||
+        message.from === user ||
+        message.type === "message"
+      );
+    });
+
+    if (displayLimit) {
+        return res.send(displayFilter.slice(-displayLimit));
+    }
+
+    return res.send(displayFilter);
   } catch (error) {
     console.error(error);
     return res.sendStatus(500);
