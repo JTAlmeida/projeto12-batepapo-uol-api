@@ -156,6 +156,33 @@ app.post("/messages", async (req, res) => {
   }
 });
 
+app.post("/status", async (req, res) => {
+    const { user } = req.headers;
+
+    console.log(user);
+    try {
+      const participant = await db
+        .collection("participants")
+        .findOne({ name: user });
+
+      if (!participant) {
+        return res.sendStatus(404);
+      }
+
+      await db
+        .collection("participants")
+        .updateOne({ name: user }, { $set: { lastStatus: Date.now() } });
+
+      return res.sendStatus(200);
+
+    } catch (error) {
+      return res.status(500).send({
+        error: error.message,
+        hint: "It's better to check if your database is properly connected.",
+      });
+    }
+  });
+
 app.listen(5000, () => {
   console.log("listen on port 5000");
 });
