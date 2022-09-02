@@ -1,7 +1,8 @@
 import express from "express";
 import cors from "cors";
 import dayjs from "dayjs";
-import { MongoClient } from "mongodb";
+import joi from "joi";
+import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -19,24 +20,32 @@ mongoClient
     db = mongoClient.db("batepapo-uol");
   })
   .catch((err) => {
-    console.error(`Error ${err} while trying to connect to database`);
+    return console.error(`Error "${err}" while trying to connect to database`);
   });
+
+const SEC = 1000;
+
+setInterval(async () => {}, 15 * SEC);
 
 app.get("/participants", async (req, res) => {
   try {
     const data = await db.collection("participants").find().toArray();
     return res.send(data);
   } catch (error) {
-    console.error(error);
-    return res.sendStatus(500);
+    return res.status(500).send({
+      error: error.message,
+      hint: "It's better to check if your database is properly connected.",
+    });
   }
 });
 
 app.post("/participants", async (req, res) => {
   const { name } = req.body;
+  const participantSchema = joi.object({ name: joi.string().required() });
+  const validation = participantSchema.validate({ name });
 
   try {
-    if (!name) {
+    if (validation.error) {
       return res.status(422).send({ message: "Please insert a name." });
     }
 
@@ -46,7 +55,7 @@ app.post("/participants", async (req, res) => {
 
     if (checkName && checkName.name === name) {
       return res.status(429).send({
-        message: "Name already being used, pleased insert a different one.",
+        message: "Name already being used, please insert a different one.",
       });
     }
 
@@ -65,42 +74,10 @@ app.post("/participants", async (req, res) => {
 
     return res.sendStatus(201);
   } catch (error) {
-    console.error(error);
-    return res.sendStatus(500);
-  }
-});
-
-app.post("/messages", async (req, res) => {
-  const { to, text, type } = req.body;
-  const from = req.headers.user;
-
-  try {
-    if (!to || !text || !type || !from) {
-      return res.status(422).send({ message: "Please fill all fields." });
-    }
-
-    if (type !== "message" && type !== "private_message") {
-      return res.status(422).send({ message: "Message type is invalid." });
-    }
-
-    const checkFrom = await db
-      .collection("participants")
-      .findOne({ name: from });
-
-    if (!checkFrom) {
-      return res.status(422).send({
-        message: "Participant doesn't exist!",
-      });
-    }
-
-    await db
-      .collection("messages")
-      .insertOne({ to, text, type, from, time: dayjs().format("hh:mm:ss") });
-
-    return res.sendStatus(201);
-  } catch (error) {
-    console.error(error);
-    return res.sendStatus(500);
+    return res.status(500).send({
+      error: error.message,
+      hint: "It's better to check if your database is properly connected.",
+    });
   }
 });
 
@@ -121,13 +98,61 @@ app.get("/messages", async (req, res) => {
     });
 
     if (displayLimit) {
-        return res.send(displayFilter.slice(-displayLimit));
+      return res.send(displayFilter.slice(-displayLimit));
     }
 
     return res.send(displayFilter);
   } catch (error) {
-    console.error(error);
-    return res.sendStatus(500);
+    return res.status(500).send({
+      error: error.message,
+      hint: "It's better to check if your database is properly connected.",
+    });
+  }
+});
+
+app.post("/messages", async (req, res) => {
+  const { to, text, type } = req.body;
+  const from = req.headers.user;
+  const messageSchema = joi.object({
+    to: joi.string().required(),
+    text: joi.string().required(),
+    type: joi.string().required().valid("message", "private_message"),
+    from: joi.string().required(),
+  });
+
+  const validation = messageSchema.validate(
+    { to, text, type, from },
+    { abortEarly: false }
+  );
+
+  try {
+    if (validation.error) {
+      const err = validation.error.details.map((error) => {
+        return error.message;
+      });
+      return res.status(422).send({ message: err });
+    }
+
+    const checkFrom = await db
+      .collection("participants")
+      .findOne({ name: from });
+
+    if (!checkFrom) {
+      return res.status(422).send({
+        message: "Participant doesn't exist!",
+      });
+    }
+
+    await db
+      .collection("messages")
+      .insertOne({ to, text, type, from, time: dayjs().format("hh:mm:ss") });
+
+    return res.sendStatus(201);
+  } catch (error) {
+    return res.status(500).send({
+      error: error.message,
+      hint: "It's better to check if your database is properly connected.",
+    });
   }
 });
 
