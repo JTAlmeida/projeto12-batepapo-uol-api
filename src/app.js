@@ -19,13 +19,44 @@ mongoClient
   .then(() => {
     db = mongoClient.db("batepapo-uol");
   })
-  .catch((err) => {
-    return console.error(`Error "${err}" while trying to connect to database`);
+  .catch((error) => {
+    return console.error(
+      `Error "${error}" while trying to connect to database`
+    );
   });
 
 const SEC = 1000;
 
-setInterval(async () => {}, 15 * SEC);
+setInterval(async () => {
+  const kickTime = Date.now() - 10 * SEC;
+
+  try {
+    const inactiveUsers = await db
+      .collection("participants")
+      .find({ lastStatus: { $lte: kickTime } })
+      .toArray();
+
+    if (inactiveUsers.length > 0) {
+      const inactiveKickedMessage = inactiveUsers.map((user) => {
+        return {
+          from: user.name,
+          to: "Todos",
+          text: "sai da sala...",
+          type: "status",
+          time: dayjs().format("hh:mm:ss"),
+        };
+      });
+      await db
+        .collection("participants")
+        .deleteMany({ lastStatus: { $lte: kickTime } });
+      await db.collection("messages").insertMany(inactiveKickedMessage);
+    }
+  } catch (error) {
+    return console.error(
+      `Error "${error}" while trying to remove inactive user`
+    );
+  }
+}, 15 * SEC);
 
 app.get("/participants", async (req, res) => {
   try {
@@ -34,7 +65,7 @@ app.get("/participants", async (req, res) => {
   } catch (error) {
     return res.status(500).send({
       error: error.message,
-      hint: "It's better to check if your database is properly connected.",
+      hint: "It's better to check if database is properly connected.",
     });
   }
 });
@@ -76,7 +107,7 @@ app.post("/participants", async (req, res) => {
   } catch (error) {
     return res.status(500).send({
       error: error.message,
-      hint: "It's better to check if your database is properly connected.",
+      hint: "It's better to check if database is properly connected.",
     });
   }
 });
@@ -105,7 +136,7 @@ app.get("/messages", async (req, res) => {
   } catch (error) {
     return res.status(500).send({
       error: error.message,
-      hint: "It's better to check if your database is properly connected.",
+      hint: "It's better to check if database is properly connected.",
     });
   }
 });
@@ -151,38 +182,64 @@ app.post("/messages", async (req, res) => {
   } catch (error) {
     return res.status(500).send({
       error: error.message,
-      hint: "It's better to check if your database is properly connected.",
+      hint: "It's better to check if database is properly connected.",
+    });
+  }
+});
+
+app.delete("/messages/:id", async (req, res) => {
+  const id = req.params.id;
+  const { user } = req.headers;
+
+  try {
+    const message = await db
+      .collection("messages")
+      .findOne({ _id: ObjectId(id) });
+
+    if (!message) {
+      return res.status(404).send({ message: "Message not found." });
+    }
+
+    if (message.from !== user) {
+      return res.status(401).send({
+        message: "User trying to delete isn't the same that sent the message.",
+      });
+    }
+
+    await db.collection("messages").deleteOne({ _id: ObjectId(id) });
+
+    return res.status(200).send({ message: "Message deleted successfully." });
+  } catch (error) {
+    res.status(500).send({
+      error: error.message,
+      hint: "It's better to check if database is properly connected.",
     });
   }
 });
 
 app.post("/status", async (req, res) => {
-    const { user } = req.headers;
+  const { user } = req.headers;
 
-    console.log(user);
-    try {
-      const participant = await db
-        .collection("participants")
-        .findOne({ name: user });
+  try {
+    const participant = await db
+      .collection("participants")
+      .findOne({ name: user });
 
-      if (!participant) {
-        return res.sendStatus(404);
-      }
-
-      await db
-        .collection("participants")
-        .updateOne({ name: user }, { $set: { lastStatus: Date.now() } });
-
-      return res.sendStatus(200);
-
-    } catch (error) {
-      return res.status(500).send({
-        error: error.message,
-        hint: "It's better to check if your database is properly connected.",
-      });
+    if (!participant) {
+      return res.sendStatus(404);
     }
-  });
 
-app.listen(5000, () => {
-  console.log("listen on port 5000");
+    await db
+      .collection("participants")
+      .updateOne({ name: user }, { $set: { lastStatus: Date.now() } });
+
+    return res.sendStatus(200);
+  } catch (error) {
+    return res.status(500).send({
+      error: error.message,
+      hint: "It's better to check if database is properly connected.",
+    });
+  }
 });
+
+app.listen(5000);
