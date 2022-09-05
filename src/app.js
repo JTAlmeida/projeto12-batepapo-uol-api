@@ -77,7 +77,7 @@ app.post("/participants", async (req, res) => {
 
   try {
     if (validation.error) {
-      return res.status(422).send({ message: "Please insert a name." });
+      return res.status(422).send({message: validation.error.details[0].message});
     }
 
     const checkName = await db
